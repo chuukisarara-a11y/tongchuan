@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>同传字幕</title>
+<style>
+/* 布局思路：手机优先单列；上方控制条，中间原文/译文两栏字幕，底部四个标签。配色与「同传单词本」一致 */
+:root{
+  --paper:#f4f5f7; --card:#ffffff; --ink:#1c2230; --mute:#677086; --line:#dcdfe7;
+  --ai:#2a4a8f; --ai-soft:#e4eaf7; --shu:#c4402f; --ok:#2c7a57; --warn:#a2670b;
+  --f-body:-apple-system,"PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",system-ui,sans-serif;
+  --f-ja:"Hiragino Sans","Yu Gothic","Noto Sans CJK JP","Noto Sans JP","Meiryo",sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{ --paper:#12151c; --card:#1b202b; --ink:#e7eaf1; --mute:#98a1b5; --line:#2e3545;
+    --ai:#8fb0f2; --ai-soft:#232d45; --shu:#ef7b69; --ok:#6fcf9f; --warn:#e2b25c; color-scheme:dark; }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.6}
+[lang="ja"]{font-family:var(--f-ja)}
+button,input,textarea,select{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--ai);outline-offset:2px}
+.wrap{max-width:860px;margin:0 auto;padding:12px 16px 110px;display:flex;flex-direction:column;gap:14px}
+header.top{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding-top:4px}
+header.top h1{font-size:19px;margin:0;letter-spacing:.06em}
+.sub{font-size:12.5px;color:var(--mute)}
+section.view{display:none;flex-direction:column;gap:14px}
+section.view.on{display:flex}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+input[type=text],input[type=password],textarea,select{width:100%;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
+textarea{min-height:84px;resize:vertical}
+label{display:block;font-size:13.5px;color:var(--mute);margin:10px 0 4px}
+.btn{border:1px solid var(--ai);background:var(--ai);color:var(--card);border-radius:8px;padding:9px 16px;font-weight:600}
+.btn.ghost{background:transparent;color:var(--ai)}
+.btn.danger{border-color:var(--shu);background:transparent;color:var(--shu)}
+.btn:disabled{opacity:.5;cursor:default}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:transparent;border-radius:999px;padding:4px 12px;font-size:13.5px;color:var(--mute)}
+.chip[aria-pressed="true"]{background:var(--ai-soft);border-color:var(--ai);color:var(--ai);font-weight:600}
+.hint{color:var(--mute);font-size:13.5px;margin:0}
+.notice{border-left:3px solid var(--warn);background:var(--card);padding:8px 12px;font-size:14px;border-radius:0 8px 8px 0}
+.notice.bad{border-color:var(--shu)} .notice.good{border-color:var(--ok)}
+h2{font-size:15px;margin:0 0 8px;letter-spacing:.04em}
+.lines{max-height:58vh;overflow-y:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+.lhead,.line{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:8px 12px}
+.lhead{position:sticky;top:0;background:var(--card);border-bottom:1px solid var(--line);font-size:12.5px;color:var(--mute);letter-spacing:.1em;z-index:1}
+.line{border-bottom:1px solid var(--line);font-size:15.5px}
+.line .s,.line .t{overflow-wrap:anywhere;min-width:0}
+.line .t.wait{color:var(--mute)}
+.line.partial .s{color:var(--mute);font-style:italic}
+.tok{cursor:pointer;border-radius:3px;padding:1px 0;border-bottom:1px dotted var(--line)}
+.tok:hover{background:var(--ai-soft)}
+.tok.on{background:var(--ai-soft);color:var(--ai);font-weight:700;border-bottom:1.5px solid var(--shu)}
+.mic{min-width:132px}
+.mic.live{background:var(--shu);border-color:var(--shu)}
+.selbar{position:fixed;left:0;right:0;bottom:58px;display:none;justify-content:center;padding:0 16px;z-index:5}
+.selbar.on{display:flex}
+.selbar .btn{box-shadow:0 2px 10px rgba(0,0,0,.25);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.list{display:flex;flex-direction:column;gap:8px}
+.item{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 14px;display:grid;grid-template-columns:1fr auto;gap:2px 10px;align-items:start}
+.item .w{font-size:18px;font-weight:700;overflow-wrap:anywhere}
+.item .s{grid-column:1;color:var(--mute);font-size:13.5px;overflow-wrap:anywhere}
+.item .x{grid-row:1/3;grid-column:2;border:0;background:none;color:var(--mute);font-size:13.5px;padding:4px}
+ol.steps{margin:0;padding-left:22px;font-size:14.5px}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:1px solid var(--line);display:flex;justify-content:center}
+nav.tabs .in{display:flex;width:100%;max-width:860px}
+nav.tabs a{flex:1;text-align:center;padding:10px 4px 12px;text-decoration:none;color:var(--mute);font-size:14px;border-top:2px solid transparent}
+nav.tabs a.on{color:var(--ai);border-top-color:var(--ai);font-weight:700}
+nav.tabs a b{display:block;font-size:11px;font-weight:400;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><h1>同传字幕</h1><span class="sub" id="topSub"></span></header>
+
+  <!-- 同传 -->
+  <section class="view" id="v-live">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <div class="chips" id="iMode">
+          <button type="button" class="chip" data-v="ja" aria-pressed="true">日语 → 中文</button>
+          <button type="button" class="chip" data-v="en" aria-pressed="false">英语 → 中文</button>
+        </div>
+        <button class="btn mic" id="micBtn" type="button">开始收听</button>
+      </div>
+      <p class="hint" id="micHint" style="margin-top:8px"></p>
+    </div>
+    <div id="iNotice"></div>
+    <div class="lines" id="lines">
+      <div class="lhead"><span>原文（点一个词就加入待收清单）</span><span>中文</span></div>
+      <div id="rows"></div>
+      <div class="line partial" id="live" hidden><div class="s" id="liveS"></div><div class="t wait">…</div></div>
+      <div class="line" id="empty"><div class="s hint">这里显示听到的原文</div><div class="t hint">这里显示逐句的中文翻译</div></div>
+    </div>
+    <div class="row">
+      <button class="btn ghost" id="newBtn" type="button">开始新的一场</button>
+      <span class="hint" id="iCount"></span>
+    </div>
+    <details class="card">
+      <summary>没有麦克风时：粘贴原文来翻译</summary>
+      <textarea id="iText" style="margin-top:10px" placeholder="把日语或英语原文粘贴到这里，会按句子拆开，逐句翻译"></textarea>
+      <div class="row" style="margin-top:8px"><button class="btn" id="iTextBtn" type="button">逐句翻译</button></div>
+    </details>
+  </section>
+
+  <!-- 待收清单 -->
+  <section class="view" id="v-pending">
+    <div class="card">
+      <h2>待收清单</h2>
+      <p class="hint">在字幕里点过的词都在这里。下课后点「复制清单」，再到 Claude 里的「同传单词本」→ 单词本 → 导入，粘贴进去。</p>
+      <div class="row" style="margin-top:10px">
+        <button class="btn" id="copyBtn" type="button">复制清单</button>
+        <button class="btn danger" id="clearBtn" type="button">清空清单</button>
+      </div>
+      <div id="copyMsg" style="margin-top:10px"></div>
+    </div>
+    <div class="list" id="pendList"></div>
+  </section>
+
+  <!-- 记录 -->
+  <section class="view" id="v-history">
+    <div class="card"><h2>以前的同传记录</h2><p class="hint">记录只存在这台设备的这个浏览器里，最多保留最近 20 场。</p></div>
+    <div class="list" id="histList"></div>
+  </section>
+
+  <!-- 设置 -->
+  <section class="view" id="v-setup">
+    <div class="card">
+      <h2>翻译服务</h2>
+      <label for="cProv">用哪家的翻译</label>
+      <select id="cProv">
+        <option value="deepseek">DeepSeek</option>
+        <option value="claude">Claude</option>
+        <option value="custom">其他（OpenAI 兼容接口）</option>
+      </select>
+      <label for="cKey">API 密钥（只保存在这台设备的浏览器里）</label>
+      <input type="password" id="cKey" autocomplete="off" placeholder="粘贴密钥">
+      <label for="cModel">模型名</label>
+      <input type="text" id="cModel" autocomplete="off">
+      <div id="cBaseBox"><label for="cBase">接口地址</label><input type="text" id="cBase" autocomplete="off"></div>
+      <div class="row" style="margin-top:12px">
+        <button class="btn" id="cSave" type="button">保存</button>
+        <button class="btn ghost" id="cTest" type="button">保存并测试</button>
+      </div>
+      <div id="cMsg" style="margin-top:10px"></div>
+    </div>
+    <div class="card">
+      <h2>这台设备的情况</h2>
+      <p class="hint" id="devInfo"></p>
+    </div>
+  </section>
+</div>
+
+<div class="selbar" id="selbar"><button class="btn" id="selBtn" type="button"></button></div>
+
+<nav class="tabs"><div class="in">
+  <a href="#live" data-t="live">同传</a>
+  <a href="#pending" data-t="pending">待收<b id="pendCnt">0 词</b></a>
+  <a href="#history" data-t="history">记录</a>
+  <a href="#setup" data-t="setup">设置</a>
+</div></nav>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+function h(tag, attrs, ...kids){
+  const el = document.createElement(tag);
+  if (attrs) for (const k in attrs){
+    const v = attrs[k]; if (v == null || v === false) continue;
+    if (k === "class") el.className = v; else if (k === "text") el.textContent = v;
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v); else el.setAttribute(k, v);
+  }
+  for (const c of kids.flat()){ if (c == null || c === false) continue; el.append(c.nodeType ? c : document.createTextNode(String(c))); }
+  return el;
+}
+const str = (v) => (typeof v === "string" ? v.trim() : v == null ? "" : String(v).trim());
+const store = {
+  get(k, d){ try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch(e){ return d; } },
+  set(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch(e){ return false; } }
+};
+const fmtTime = (ts) => { try { return new Date(ts).toLocaleString("zh-CN", {month:"numeric", day:"numeric", hour:"2-digit", minute:"2-digit"}); } catch(e){ return ""; } };
+
+/* ---------- 状态 ---------- */
+const PRESET = {
+  deepseek:{base:"https://api.deepseek.com", model:"deepseek-flash"},
+  claude:{base:"https://api.anthropic.com", model:"claude-haiku-5-5"},
+  custom:{base:"", model:""}
+};
+const S = {
+  cfg: Object.assign({provider:"deepseek", key:"", model:PRESET.deepseek.model, base:PRESET.deepseek.base}, store.get("tc_cfg", {})),
+  mode: store.get("tc_mode", "ja"),
+  pend: store.get("tc_pending", []),
+  sessions: store.get("tc_sessions", []),
+  sess: {id:"s" + Date.now(), start:Date.now(), rows:[]},
+  buf:"", partial:"", want:false, listening:false, pumping:false, paused:null, clearArm:false, delArm:null
+};
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const SEG = {};
+try { if (window.Intl && Intl.Segmenter){ SEG.ja = new Intl.Segmenter("ja", {granularity:"word"}); SEG.en = new Intl.Segmenter("en", {granularity:"word"}); } } catch(e){}
+
+/* ---------- 路由 ---------- */
+const TABS = ["live","pending","history","setup"];
+function route(){
+  let t = location.hash.replace("#",""); if (!TABS.includes(t)) t = S.cfg.key ? "live" : "setup";
+  for (const n of TABS) $("v-"+n).classList.toggle("on", n === t);
+  document.querySelectorAll("nav.tabs a").forEach(a => a.classList.toggle("on", a.dataset.t === t));
+  if (t === "pending") renderPending(); if (t === "history") renderHistory();
+}
+window.addEventListener("hashchange", route);
+
+/* ---------- 调用翻译服务 ---------- */
+function httpError(status){
+  const m = {401:"密钥不对，或者已经失效。到「设置」里重新粘贴。", 402:"账户余额不足，需要充值。", 403:"这个密钥没有权限。", 404:"模型名或接口地址不对，到「设置」里检查。", 429:"请求太频繁，等几秒再继续。"};
+  return {text: m[status] || (status >= 500 ? "翻译服务暂时出错（" + status + "），等一会儿再继续。" : "请求被拒绝（" + status + "）。")};
+}
+async function callLLM(prompt){
+  const c = S.cfg;
+  if (!c.key) throw {text:"还没有填 API 密钥。到「设置」里填好再来。"};
+  let r;
+  try {
+    if (c.provider === "claude"){
+      r = await fetch("https://api.anthropic.com/v1/messages", {method:"POST",
+        headers:{"content-type":"application/json", "x-api-key":c.key, "anthropic-version":"2023-06-01", "anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({model:c.model, max_tokens:3000, messages:[{role:"user", content:prompt}]})});
+    } else {
+      const body = {model:c.model, messages:[{role:"user", content:prompt}], stream:false};
+      if (c.provider === "deepseek"){ body.thinking = {type:"disabled"}; body.response_format = {type:"json_object"}; }
+      r = await fetch(str(c.base).replace(/\/+$/,"") + "/chat/completions", {method:"POST",
+        headers:{"content-type":"application/json", "authorization":"Bearer " + c.key}, body:JSON.stringify(body)});
+    }
+  } catch(e){ throw {text:"连不上翻译服务。可能是网络断了，也可能是这家服务不允许网页直接调用。"}; }
+  if (!r.ok) throw httpError(r.status);
+  const j = await r.json();
+  const text = c.provider === "claude" ? (j.content || []).filter(b => b.type === "text").map(b => b.text).join("")
+                                       : (((j.choices || [])[0] || {}).message || {}).content || "";
+  return text;
+}
+function parseJsonLoose(text){
+  const a = text.indexOf("{"), b = text.lastIndexOf("}");
+  if (a < 0 || b <= a) throw {text:"翻译服务返回的格式不对，点「继续翻译」再试一次。"};
+  try { return JSON.parse(text.slice(a, b + 1)); } catch(e){ throw {text:"翻译服务返回的格式不对，点「继续翻译」再试一次。"}; }
+}
+function transPrompt(batch, ctx, mode){
+  const L = mode === "ja" ? "日语" : "英语";
+  return [
+    "你是课堂同声传译，把" + L + "逐句翻成自然、准确的简体中文。原文来自语音识别，没有标点，可能有错字或断句不完整，请按最合理的意思翻。",
+    ctx.length ? "前文（只作参考，不用翻）：\n" + ctx.join("\n") : "",
+    "请翻译下面 " + batch.length + " 句。只输出一个 JSON 对象，格式为 {\"t\":[\"第1句译文\",\"第2句译文\"]}，数组长度必须正好是 " + batch.length + "，顺序一一对应，不要输出其他文字：",
+    JSON.stringify(batch.map(r => r.s))
+  ].filter(Boolean).join("\n\n");
+}
+async function pump(){
+  if (S.pumping || S.paused) return;
+  S.pumping = true;
+  while (!S.paused){
+    const rows = S.sess.rows, todo = rows.filter(r => r.z == null);
+    if (!todo.length) break;
+    const mode = todo[0].m, batch = todo.filter(r => r.m === mode).slice(0, 5);
+    const i0 = rows.indexOf(batch[0]);
+    const ctx = rows.slice(Math.max(0, i0 - 2), i0).map(r => r.s);
+    try {
+      const obj = parseJsonLoose(await callLLM(transPrompt(batch, ctx, mode)));
+      const arr = Array.isArray(obj.t) ? obj.t : [];
+      batch.forEach((r, i) => { r.z = str(arr[i]) || "（这句没翻出来）"; paintT(r); });
+      saveSessSoon();
+    } catch(e){ S.paused = (e && e.text) || "翻译出错了，等一会儿再继续。"; renderNotice(); }
+  }
+  S.pumping = false;
+}
+
+/* ---------- 字幕 ---------- */
+function splitSentences(text, mode, force){
+  const out = []; const re = mode === "ja" ? /[。！？!?]+/g : /[.!?]+(?=\s|$)/g;
+  let last = 0, m;
+  while ((m = re.exec(text))){ const end = m.index + m[0].length; out.push(text.slice(last, end)); last = end; }
+  let rest = text.slice(last);
+  if (rest.trim() && (force || rest.length > (mode === "ja" ? 60 : 170))){ out.push(rest); rest = ""; }
+  return {done: out.map(s => s.trim()).filter(Boolean), rest};
+}
+let idleTimer = null;
+function feed(text, force){
+  if (text) S.buf += (S.mode === "en" && S.buf && !/\s$/.test(S.buf) ? " " : "") + text;
+  const r = splitSentences(S.buf, S.mode, force); S.buf = r.rest;
+  for (const s of r.done){ const row = {s, z:null, m:S.mode}; S.sess.rows.push(row); appendRow(row); }
+  if (r.done.length){ pump(); saveSessSoon(); }
+  paintLive();
+}
+const pendKey = (lang, w) => lang + "|" + (lang === "en" ? w.toLowerCase() : w);
+const pendHas = (lang, w) => S.pend.some(p => pendKey(p.l, p.w) === pendKey(lang, w));
+function fillTokens(el, r){
+  el.replaceChildren();
+  const seg = SEG[r.m];
+  if (!seg){ el.textContent = r.s; return; }
+  for (const p of seg.segment(r.s)){
+    if (p.isWordLike) el.append(h("span", {class:"tok" + (pendHas(r.m, p.segment) ? " on" : ""), "data-w":p.segment, text:p.segment}));
+    else el.append(p.segment);
+  }
+}
+function paintT(r){ if (!r.el) return; r.el.t.textContent = r.z == null ? "翻译中…" : r.z; r.el.t.className = "t" + (r.z == null ? " wait" : ""); }
+function nearBottom(){ const b = $("lines"); return b.scrollHeight - b.scrollTop - b.clientHeight < 80; }
+function appendRow(r){
+  const stick = nearBottom();
+  const s = h("div", {class:"s", lang:r.m === "ja" ? "ja" : "en"}), t = h("div", {class:"t"});
+  const line = h("div", {class:"line"}, s, t); line._row = r; r.el = {s, t};
+  fillTokens(s, r); paintT(r); $("rows").append(line);
+  paintMeta(); if (stick) $("lines").scrollTop = $("lines").scrollHeight;
+}
+function paintLive(){
+  const live = (S.buf + (S.partial ? " " + S.partial : "")).trim(), stick = nearBottom();
+  $("live").hidden = !live; $("liveS").textContent = live; $("liveS").lang = S.mode === "ja" ? "ja" : "en";
+  paintMeta(); if (stick && live) $("lines").scrollTop = $("lines").scrollHeight;
+}
+function paintMeta(){
+  const n = S.sess.rows.length;
+  $("empty").hidden = n > 0 || !$("live").hidden;
+  $("iCount").textContent = n ? "这一场共 " + n + " 句（" + fmtTime(S.sess.start) + " 开始）" : "";
+}
+function rebuildRows(){ $("rows").replaceChildren(); for (const r of S.sess.rows){ r.el = null; appendRow(r); } paintLive(); }
+function repaintTokens(){ for (const r of S.sess.rows) if (r.el) fillTokens(r.el.s, r); }
+function renderNotice(){
+  const n = $("iNotice"); n.replaceChildren();
+  if (S.paused) n.append(h("div", {class:"notice bad"}, S.paused + " ",
+    h("button", {class:"btn ghost", type:"button", text:"继续翻译", onclick:() => { S.paused = null; renderNotice(); pump(); }})));
+}
+
+/* ---------- 待收清单 ---------- */
+function savePend(){ store.set("tc_pending", S.pend); $("pendCnt").textContent = S.pend.length + " 词"; }
+function togglePend(lang, w, sentence){
+  const k = pendKey(lang, w), i = S.pend.findIndex(p => pendKey(p.l, p.w) === k);
+  if (i >= 0) S.pend.splice(i, 1); else S.pend.push({w, s:sentence, l:lang, at:Date.now()});
+  savePend(); repaintTokens();
+}
+$("rows").addEventListener("click", (ev) => {
+  const tok = ev.target.closest(".tok"); if (!tok) return;
+  if (String(window.getSelection && window.getSelection()).trim()) return;
+  const line = tok.closest(".line"); if (!line || !line._row) return;
+  togglePend(line._row.m, tok.dataset.w, line._row.s);
+});
+/* 选中一段文字（比如被拆开的复合词）也可以收 */
+let selInfo = null;
+document.addEventListener("selectionchange", () => {
+  const sel = window.getSelection(); const text = sel ? String(sel).trim() : "";
+  let line = null;
+  if (text && text.length <= 40 && sel.anchorNode){
+    const a = (sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentElement);
+    const cell = a && a.closest ? a.closest("#rows .s") : null;
+    if (cell && cell.contains(sel.focusNode)) line = cell.closest(".line");
+  }
+  if (line && line._row){ selInfo = {w:text, row:line._row}; $("selBtn").textContent = "把「" + text + "」加入待收清单"; $("selbar").classList.add("on"); }
+  else { selInfo = null; $("selbar").classList.remove("on"); }
+});
+$("selBtn").addEventListener("click", () => {
+  if (!selInfo) return;
+  if (!pendHas(selInfo.row.m, selInfo.w)) togglePend(selInfo.row.m, selInfo.w, selInfo.row.s);
+  try { window.getSelection().removeAllRanges(); } catch(e){}
+});
+function pendText(){ return "【同传单词本·待收清单】\n" + JSON.stringify(S.pend.map(p => ({w:p.w, s:p.s, l:p.l}))); }
+function renderPending(){
+  $("pendCnt").textContent = S.pend.length + " 词";
+  $("copyBtn").disabled = !S.pend.length; $("clearBtn").disabled = !S.pend.length;
+  $("clearBtn").textContent = S.clearArm ? "再点一次，确认清空" : "清空清单";
+  const list = $("pendList"); list.replaceChildren();
+  if (!S.pend.length){ list.append(h("p", {class:"hint", text:"清单是空的。回到「同传」，在原文里点一个词试试。"})); return; }
+  S.pend.forEach((p, i) => list.append(h("div", {class:"item"},
+    h("div", {class:"w", lang:p.l === "ja" ? "ja" : "en", text:p.w}),
+    h("button", {class:"x", type:"button", text:"移除", onclick:() => { S.pend.splice(i, 1); savePend(); renderPending(); repaintTokens(); }}),
+    h("div", {class:"s", lang:p.l === "ja" ? "ja" : "en", text:p.s}))));
+}
+$("copyBtn").addEventListener("click", async () => {
+  const text = pendText(), box = $("copyMsg"); box.replaceChildren();
+  try { await navigator.clipboard.writeText(text); box.append(h("div", {class:"notice good", text:"已复制 " + S.pend.length + " 个词。现在去单词本里粘贴导入；导入成功后再回来清空清单。"})); }
+  catch(e){
+    const ta = h("textarea", {readonly:"readonly"}); ta.value = text;
+    box.append(h("div", {class:"notice", text:"自动复制没成功。请全选下面的文字，手动复制："}), ta); ta.focus(); ta.select();
+  }
+});
+$("clearBtn").addEventListener("click", () => {
+  if (!S.clearArm){ S.clearArm = true; renderPending(); return; }
+  S.clearArm = false; S.pend = []; savePend(); $("copyMsg").replaceChildren(); renderPending(); repaintTokens();
+});
+
+/* ---------- 记录 ---------- */
+let saveTimer = null;
+function saveSessNow(){
+  if (!S.sess.rows.length) return;
+  const data = {id:S.sess.id, start:S.sess.start, rows:S.sess.rows.map(r => ({s:r.s, z:r.z, m:r.m}))};
+  const i = S.sessions.findIndex(x => x.id === data.id);
+  if (i >= 0) S.sessions[i] = data; else S.sessions.unshift(data);
+  S.sessions = S.sessions.slice(0, 20);
+  while (!store.set("tc_sessions", S.sessions) && S.sessions.length > 1) S.sessions.pop();
+}
+function saveSessSoon(){ clearTimeout(saveTimer); saveTimer = setTimeout(saveSessNow, 1500); }
+function openSession(x){
+  stopListening(); saveSessNow();
+  S.sess = {id:x.id, start:x.start, rows:x.rows.map(r => ({s:r.s, z:r.z, m:r.m}))};
+  S.buf = ""; S.partial = ""; S.paused = null; renderNotice(); rebuildRows(); location.hash = "#live"; pump();
+}
+function renderHistory(){
+  const list = $("histList"); list.replaceChildren();
+  if (!S.sessions.length){ list.append(h("p", {class:"hint", text:"还没有记录。同传过一次之后，这里会出现那一场的全部字幕。"})); return; }
+  for (const x of S.sessions){
+    const arm = S.delArm === x.id, first = (x.rows[0] || {}).s || "";
+    list.append(h("div", {class:"item"},
+      h("div", {class:"w", text:fmtTime(x.start) + " · " + x.rows.length + " 句"}),
+      h("div", {class:"row", style:"grid-row:1/3;grid-column:2"},
+        h("button", {class:"btn ghost", type:"button", text:"打开", onclick:() => openSession(x)}),
+        h("button", {class:"btn danger", type:"button", text: arm ? "确认删除" : "删除", onclick:() => {
+          if (!arm){ S.delArm = x.id; renderHistory(); return; }
+          S.delArm = null; S.sessions = S.sessions.filter(y => y.id !== x.id); store.set("tc_sessions", S.sessions);
+          if (S.sess.id === x.id){ S.sess = {id:"s" + Date.now(), start:Date.now(), rows:[]}; rebuildRows(); }
+          renderHistory(); }})),
+      h("div", {class:"s", text:first})));
+  }
+}
+$("newBtn").addEventListener("click", () => {
+  stopListening(); saveSessNow();
+  S.sess = {id:"s" + Date.now(), start:Date.now(), rows:[]}; S.buf = ""; S.partial = ""; S.paused = null;
+  renderNotice(); rebuildRows();
+});
+
+/* ---------- 语音识别 ---------- */
+let rec = null, wake = null, restarts = [];
+function micHint(msg){
+  if (msg){ $("micHint").textContent = msg; return; }
+  if (!SR) $("micHint").textContent = "这个浏览器没有语音识别。请用 Chrome 打开这个网页；这里可以先用下面的「粘贴原文」。";
+  else $("micHint").textContent = S.listening ? "正在听。设备离声音近一些，识别会更准。" : "点「开始收听」，第一次会询问是否允许使用麦克风。";
+}
+function paintMic(){
+  const b = $("micBtn"); b.disabled = !SR; b.classList.toggle("live", S.listening);
+  b.textContent = S.listening ? "停止收听" : "开始收听";
+}
+async function holdWake(on){
+  try { if (on && navigator.wakeLock) wake = await navigator.wakeLock.request("screen"); else if (!on && wake){ await wake.release(); wake = null; } } catch(e){}
+}
+function startListening(){
+  if (!SR) return;
+  S.want = true; restarts = [];
+  rec = new SR(); rec.lang = S.mode === "ja" ? "ja-JP" : "en-US"; rec.continuous = true; rec.interimResults = true;
+  rec.onstart = () => { S.listening = true; paintMic(); micHint(); };
+  rec.onresult = (e) => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++){
+      const r = e.results[i];
+      if (r.isFinal){ feed(str(r[0].transcript), false); clearTimeout(idleTimer); idleTimer = setTimeout(() => feed("", true), 1200); }
+      else interim += r[0].transcript;
+    }
+    S.partial = interim; paintLive();
+  };
+  rec.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed"){ S.want = false; micHint("麦克风没有被允许。点地址栏左边的图标，把麦克风改成「允许」，再点一次开始。"); }
+    else if (e.error === "audio-capture"){ S.want = false; micHint("找不到麦克风。检查一下设备的麦克风是否可用。"); }
+    else if (e.error === "language-not-supported"){ S.want = false; micHint("这个浏览器的语音识别不支持这门语言。"); }
+  };
+  rec.onend = () => {
+    S.partial = ""; feed("", true);
+    if (S.want){
+      const now = Date.now(); restarts = restarts.filter(t => now - t < 10000); restarts.push(now);
+      if (restarts.length > 6){ S.want = false; S.listening = false; paintMic(); holdWake(false); micHint("语音识别一直连不上，已经停止。检查网络后再点一次开始。"); return; }
+      setTimeout(() => { if (S.want) try { rec.start(); } catch(e){} }, 250);
+    } else { S.listening = false; paintMic(); holdWake(false); if ($("micHint").textContent.startsWith("正在听")) micHint(); }
+  };
+  try { rec.start(); holdWake(true); } catch(e){ micHint("语音识别启动失败，刷新页面后再试。"); }
+}
+function stopListening(){ S.want = false; clearTimeout(idleTimer); if (rec) try { rec.stop(); } catch(e){} }
+$("micBtn").addEventListener("click", () => { if (S.listening || S.want) stopListening(); else startListening(); });
+document.addEventListener("visibilitychange", () => { if (!document.hidden && S.listening) holdWake(true); });
+$("iMode").addEventListener("click", (ev) => {
+  const b = ev.target.closest(".chip"); if (!b) return;
+  const was = S.listening || S.want; if (was) stopListening();
+  feed("", true); S.mode = b.dataset.v; store.set("tc_mode", S.mode); paintMode();
+  if (was) setTimeout(startListening, 500);
+});
+function paintMode(){ $("iMode").querySelectorAll(".chip").forEach(c => c.setAttribute("aria-pressed", String(c.dataset.v === S.mode))); }
+$("iTextBtn").addEventListener("click", () => {
+  const t = str($("iText").value); if (!t) return;
+  const keep = S.buf; S.buf = ""; feed(t.replace(/\s*\n+\s*/g, S.mode === "ja" ? "。" : ". "), true); S.buf = keep; $("iText").value = ""; paintLive();
+});
+
+/* ---------- 设置 ---------- */
+function paintCfg(){
+  $("cProv").value = S.cfg.provider; $("cKey").value = S.cfg.key; $("cModel").value = S.cfg.model; $("cBase").value = S.cfg.base;
+  $("cBaseBox").hidden = S.cfg.provider === "claude";
+  $("topSub").textContent = S.cfg.key ? "翻译：" + ({deepseek:"DeepSeek", claude:"Claude", custom:"自定义"}[S.cfg.provider]) : "还没填密钥";
+}
+$("cProv").addEventListener("change", () => {
+  const p = $("cProv").value; $("cModel").value = PRESET[p].model; $("cBase").value = PRESET[p].base; $("cBaseBox").hidden = p === "claude";
+});
+function readCfg(){
+  S.cfg = {provider:$("cProv").value, key:str($("cKey").value), model:str($("cModel").value), base:str($("cBase").value)};
+  store.set("tc_cfg", S.cfg); paintCfg();
+}
+$("cSave").addEventListener("click", () => { readCfg(); $("cMsg").replaceChildren(h("div", {class:"notice good", text:"已保存。"})); });
+$("cTest").addEventListener("click", async () => {
+  readCfg(); const box = $("cMsg"); box.replaceChildren(h("p", {class:"hint", text:"正在测试…"}));
+  try {
+    const obj = parseJsonLoose(await callLLM(transPrompt([{s:"今日は天気がいいですね"}], [], "ja")));
+    box.replaceChildren(h("div", {class:"notice good", text:"测试成功。「今日は天気がいいですね」→「" + str((obj.t || [])[0]) + "」"}));
+  } catch(e){ box.replaceChildren(h("div", {class:"notice bad", text:"测试失败：" + ((e && e.text) || "未知错误")})); }
+});
+function paintDev(){
+  $("devInfo").textContent = (SR ? "语音识别：可用。" : "语音识别：这个浏览器不支持，请换 Chrome。") + " " +
+    (SEG.ja ? "点词收录：可用。" : "点词收录：这个浏览器太旧，不能自动分词，但可以选中文字来收。");
+}
+
+/* ---------- 启动 ---------- */
+window.addEventListener("pagehide", saveSessNow);
+paintCfg(); paintMode(); paintMic(); micHint(); paintDev(); savePend(); rebuildRows(); renderNotice(); route();
+</script>
+</body>
+</html>
